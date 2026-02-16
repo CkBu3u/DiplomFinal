@@ -21,7 +21,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ListingCard } from '@/components/ListingCard';
-import { getListings, getBrands } from '@/lib/supabase';
+import { getListings, getBrands, getModelIdsBySearch } from '@/lib/supabase';
 import type { Listing, Brand } from '@/lib/supabase';
 
 export function SearchPage() {
@@ -93,14 +93,14 @@ export function SearchPage() {
   useEffect(() => {
     const loadListings = async () => {
       setIsLoading(true);
-      
+
       const filters: any = {
         page,
         limit: 20,
         sortBy,
       };
 
-      // Parse URL params
+      // Параметры из URL
       const brandId = searchParams.get('brand_id');
       const modelId = searchParams.get('model_id');
       const yearMin = searchParams.get('year_min');
@@ -110,26 +110,44 @@ export function SearchPage() {
       const bodyType = searchParams.get('body_type');
       const q = searchParams.get('q');
 
-      if (brandId) filters.brand_id = parseInt(brandId);
-      if (modelId) filters.model_id = parseInt(modelId);
       if (yearMin) filters.year_min = parseInt(yearMin);
       if (yearMax) filters.year_max = parseInt(yearMax);
       if (priceMin) filters.price_min = parseInt(priceMin);
       if (priceMax) filters.price_max = parseInt(priceMax);
-      if (bodyType) filters.body_type = bodyType;
-      if (q?.trim()) filters.search = q.trim();
 
-      if (selectedBrands.length > 0) filters.brand_id = selectedBrands[0];
-      if (selectedModels.length > 0) filters.model_id = selectedModels[0];
-      if (selectedBodyTypes.length > 0) filters.body_type = selectedBodyTypes[0];
-      if (selectedEngineTypes.length > 0) filters.engine_type = selectedEngineTypes[0];
-      if (selectedTransmissions.length > 0) filters.transmission = selectedTransmissions[0];
-      if (selectedDriveTypes.length > 0) filters.drive_type = selectedDriveTypes[0];
+      // Марки и модели: из чекбоксов (массив) или из URL (одно значение)
+      if (selectedBrands.length > 0) {
+        filters.brand_id = selectedBrands;
+      } else if (brandId) {
+        filters.brand_id = parseInt(brandId);
+      }
+      if (selectedModels.length > 0) {
+        filters.model_id = selectedModels;
+      } else if (modelId) {
+        filters.model_id = parseInt(modelId);
+      }
+      if (selectedBodyTypes.length > 0) filters.body_type = selectedBodyTypes;
+      else if (bodyType) filters.body_type = bodyType;
+      if (selectedEngineTypes.length > 0) filters.engine_type = selectedEngineTypes;
+      if (selectedTransmissions.length > 0) filters.transmission = selectedTransmissions;
+      if (selectedDriveTypes.length > 0) filters.drive_type = selectedDriveTypes;
 
       filters.price_min = priceRange[0];
       filters.price_max = priceRange[1];
       filters.year_min = yearRange[0];
       filters.year_max = yearRange[1];
+
+      // Поиск по названию: заголовок, описание, имя марки, имя модели
+      if (q?.trim()) {
+        filters.search = q.trim();
+        const [modelIds] = await Promise.all([getModelIdsBySearch(q)]);
+        const { data: brandsData } = await getBrands();
+        const searchBrandIds = (brandsData || []).filter((b: Brand) =>
+          b.name.toLowerCase().includes(q.toLowerCase())
+        ).map((b: Brand) => b.id);
+        if (searchBrandIds.length) filters.searchBrandIds = searchBrandIds;
+        if (modelIds.length) filters.searchModelIds = modelIds;
+      }
 
       const { data } = await getListings(filters);
       if (data) {

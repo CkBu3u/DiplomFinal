@@ -153,18 +153,20 @@ export async function updateUserProfile(userId: string, data: { phone?: string; 
 
 // Listings functions
 export async function getListings(filters: {
-  brand_id?: number;
-  model_id?: number;
+  brand_id?: number | number[];
+  model_id?: number | number[];
   price_min?: number;
   price_max?: number;
   year_min?: number;
   year_max?: number;
   city?: string;
-  body_type?: string;
-  engine_type?: string;
-  transmission?: string;
-  drive_type?: string;
+  body_type?: string | string[];
+  engine_type?: string | string[];
+  transmission?: string | string[];
+  drive_type?: string | string[];
   search?: string;
+  searchBrandIds?: number[];
+  searchModelIds?: number[];
   sortBy?: string;
   page?: number;
   limit?: number;
@@ -179,22 +181,64 @@ export async function getListings(filters: {
       user:users(first_name, avatar_url)
     `)
     .eq('status', 'active');
-  
-  if (filters.brand_id) query = query.eq('brand_id', filters.brand_id);
-  if (filters.model_id) query = query.eq('model_id', filters.model_id);
+
+  // Одна или несколько марок
+  if (Array.isArray(filters.brand_id) && filters.brand_id.length > 0) {
+    query = query.in('brand_id', filters.brand_id);
+  } else if (typeof filters.brand_id === 'number') {
+    query = query.eq('brand_id', filters.brand_id);
+  }
+  // Одна или несколько моделей
+  if (Array.isArray(filters.model_id) && filters.model_id.length > 0) {
+    query = query.in('model_id', filters.model_id);
+  } else if (typeof filters.model_id === 'number') {
+    query = query.eq('model_id', filters.model_id);
+  }
+
   if (filters.price_min) query = query.gte('price', filters.price_min);
   if (filters.price_max) query = query.lte('price', filters.price_max);
   if (filters.year_min) query = query.gte('year', filters.year_min);
   if (filters.year_max) query = query.lte('year', filters.year_max);
   if (filters.city) query = query.eq('city', filters.city);
-  if (filters.body_type) query = query.eq('body_type', filters.body_type);
-  if (filters.engine_type) query = query.eq('engine_type', filters.engine_type);
-  if (filters.transmission) query = query.eq('transmission', filters.transmission);
-  if (filters.drive_type) query = query.eq('drive_type', filters.drive_type);
-  if (filters.search?.trim()) {
-    query = query.or(`title.ilike.%${filters.search.trim()}%,description.ilike.%${filters.search.trim()}%`);
+
+  // Один или несколько типов кузова / двигателя / КПП / привода
+  if (Array.isArray(filters.body_type) && filters.body_type.length > 0) {
+    query = query.in('body_type', filters.body_type);
+  } else if (typeof filters.body_type === 'string' && filters.body_type) {
+    query = query.eq('body_type', filters.body_type);
   }
-  
+  if (Array.isArray(filters.engine_type) && filters.engine_type.length > 0) {
+    query = query.in('engine_type', filters.engine_type);
+  } else if (typeof filters.engine_type === 'string' && filters.engine_type) {
+    query = query.eq('engine_type', filters.engine_type);
+  }
+  if (Array.isArray(filters.transmission) && filters.transmission.length > 0) {
+    query = query.in('transmission', filters.transmission);
+  } else if (typeof filters.transmission === 'string' && filters.transmission) {
+    query = query.eq('transmission', filters.transmission);
+  }
+  if (Array.isArray(filters.drive_type) && filters.drive_type.length > 0) {
+    query = query.in('drive_type', filters.drive_type);
+  } else if (typeof filters.drive_type === 'string' && filters.drive_type) {
+    query = query.eq('drive_type', filters.drive_type);
+  }
+
+  // Поиск по названию/описанию и по имени марки/модели
+  const searchTerm = filters.search?.trim();
+  if (searchTerm) {
+    const orParts: string[] = [
+      `title.ilike.%${searchTerm}%`,
+      `description.ilike.%${searchTerm}%`,
+    ];
+    if (filters.searchBrandIds?.length) {
+      orParts.push(`brand_id.in.(${filters.searchBrandIds.join(',')})`);
+    }
+    if (filters.searchModelIds?.length) {
+      orParts.push(`model_id.in.(${filters.searchModelIds.join(',')})`);
+    }
+    query = query.or(orParts.join(','));
+  }
+
   query = query.order(filters.sortBy || 'created_at', { ascending: false });
   
   const page = filters.page || 1;
@@ -280,6 +324,17 @@ export async function getModelsByBrand(brandId: number) {
     .order('name');
   
   return { data: data as Model[] | null, error };
+}
+
+/** Возвращает id моделей, у которых имя содержит строку поиска (для поиска по названию). */
+export async function getModelIdsBySearch(search: string): Promise<number[]> {
+  const term = search.trim();
+  if (!term) return [];
+  const { data } = await supabase
+    .from('models')
+    .select('id')
+    .ilike('name', `%${term}%`);
+  return (data || []).map((r: { id: number }) => r.id);
 }
 
 // Избранное: один вызов RPC, user_id подставляется в БД из auth.uid()

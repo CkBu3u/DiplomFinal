@@ -1,0 +1,26 @@
+# Зависимости — не коммитить (после клонирования: npm install)
+node_modules/
+
+# Сборка — можно собирать при деплое, не хранить в Git
+dist/
+
+# Локальные env
+.env
+.env.local
+.env.*.local
+
+# Логи и кэш
+*.log
+npm-debug.log*
+.npm
+.vite
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
